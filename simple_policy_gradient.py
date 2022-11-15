@@ -3,13 +3,12 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.distributions import Categorical
-import matplotlib.pyplot as plt
 import gymnasium as gym
 
 defaults = {
     'env_name': 'LunarLander-v2',
     'policy_net_params': {
-        'inner_sizes': [16],
+        'inner_sizes': [32],
         'inner_activation': nn.ReLU,
         'output_activation': nn.Identity,
     },
@@ -18,10 +17,12 @@ defaults = {
         'lr': 1e-2
     },
     'experiment_params': {
-        'epochs': 205,
+        'epochs': 200,
         'batch_size': 5000,
-        'display_every': 20,
-        'random_seed': 42
+        'display': False,
+        'print': False,
+        'display_every': 200,
+        'random_seed': 42,
     }
 }
 
@@ -32,8 +33,7 @@ class PolicyNetwork(nn.Module):
         self.sequential = self.set_sequential(
             sizes, inner_activation, output_activation)
 
-    @staticmethod
-    def set_sequential(sizes, activation, output_activation):
+    def set_sequential(self, sizes, activation, output_activation):
         layers = []
         for j in range(len(sizes) - 1):
             act_func = activation if j < len(sizes) - 2 else output_activation
@@ -63,6 +63,11 @@ class DataManager():
 
     def __init__(self):
         self.clear_data()
+        self.gen_stats = {
+            'returns': [],
+            'ep_lengths': [],
+            'losses': []
+        }
 
     def clear_data(self):
         names = [
@@ -76,11 +81,20 @@ class DataManager():
         return None
 
     def set_loss(self, loss):
+        self.gen_stats['losses'].append(loss.item())
         self.data['loss'] = loss
+
+    def save_epoch_stats(self):
+        mean_returns = np.mean(self.data['returns'])
+        mean_ep_lens = np.mean(self.data['ep_lengths'])
+        self.gen_stats['returns'].append(mean_returns)
+        self.gen_stats['ep_lengths'].append(mean_ep_lens)
+        # print('epoch: %3d \t loss: %.3f \t return: %.3f \t ep_len: %.3f'%
+        #     (i, self.data['loss'], mean_returns, mean_ep_lens))
 
     def print_epoch_stats(self, i):
         print('epoch: %3d \t loss: %.3f \t return: %.3f \t ep_len: %.3f'%
-            (i, self.data['loss'], np.mean(self.data['returns']), np.mean(self.data['ep_lengths'])))
+            (i, self.data['loss'], self.gen_stats['returns'][-1], self.gen_stats['ep_lengths'][-1]))
 
     def compute_rtgs(self, rewards):
         n = len(rewards)
@@ -128,6 +142,11 @@ class SPG():
     def set_policy_optimizer(self, type, lr):
         self.policy_optimizer = type(self.policy_net.parameters(), lr = lr)
 
+    def run_batch(self):
+        self.mng.clear_data()
+        while len(self.mng.data['observations']) < self.params['batch_size']:
+            self.run_episode()
+
     def run_episode(self):
         observation, info = self.env.reset()
         ep_rewards = []
@@ -145,21 +164,6 @@ class SPG():
                 self.mng.data['weights'] += list(self.mng.compute_rtgs(ep_rewards))
                 break
     
-    def run_episode_render(self, env):
-        observation, _ = env.reset()
-        while True:
-            action = self.policy_net.get_action(
-                torch.as_tensor(observation, dtype = torch.float32)
-            )
-            observation, _, terminated, truncated, _ = env.step(action)
-            if terminated or truncated:
-                break
-            
-    def run_batch(self):
-        self.mng.clear_data()
-        while len(self.mng.data['observations']) < self.params['batch_size']:
-            self.run_episode()
-
     def update_policy(self):
         self.policy_optimizer.zero_grad()
         data_for_update = self.mng.get_data_for_update()
@@ -170,6 +174,16 @@ class SPG():
         self.policy_optimizer.step()
         self.mng.set_loss(batch_loss)
 
+    def run_episode_render(self, env):
+        observation, _ = env.reset()
+        while True:
+            action = self.policy_net.get_action(
+                torch.as_tensor(observation, dtype = torch.float32)
+            )
+            observation, _, terminated, truncated, _ = env.step(action)
+            if terminated or truncated:
+                break
+            
     def render_human_env(self):
         env = gym.make(self.env_name, render_mode = 'human')
         _, _ = env.reset()
@@ -184,12 +198,16 @@ class SPG():
         while self.epochs_counter < self.params['epochs']:
             self.run_batch() # run episodes until batch_size is exceeded
             self.update_policy() # update policy with batch data
+            self.mng.save_epoch_stats()
             self.mng.print_epoch_stats(self.epochs_counter) # print stats from this batch
             self.mng.clear_data() # clear logs buffer
-            if self.epochs_counter % self.params['display_every'] == 0:
-                self.render_human_env() # occassionally display agents performance 
+            if self.params['display']:
+                if self.epochs_counter % (self.params['display_every'] - 1) == 0 and self.epochs_counter != 0:
+                    self.render_human_env() # occassionally display agents performance 
             self.epochs_counter += 1 # epoch finished
         self.env.close()
+        print('Finished')
+        return self.mng.gen_stats
     
 if __name__ == '__main__':
     spg = SPG()

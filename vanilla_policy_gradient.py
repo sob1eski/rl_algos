@@ -6,34 +6,36 @@ from torch.distributions import Categorical
 import gymnasium as gym
 
 defaults = {
-    'env_name': 'LunarLander-v2',
+    'env_name': 'MountainCar-v0',
     'policy_net_params': {
-        'inner_sizes': [32],
+        'inner_sizes': [256, 256],
         'inner_activation': nn.ReLU,
         'output_activation': nn.Identity
     },
     'policy_optimizer_params': {
         'type': Adam,
-        'lr': 1e-2
+        'lr': 1e-4 
     },
     'value_net_params': {
-        'inner_sizes': [32],
+        'inner_sizes': [256, 256],
         'inner_activation': nn.ReLU,
         'output_activation': nn.Identity,
-        'lambda_factor': 0.96 # 0.96
+        'lambda_factor': 0.96
     },
     'value_optimizer_params': {
         'type': Adam,
         'lr': 1e-2
     },
     'experiment_params': {
-        'epochs': 200,
-        'policy_batch_size': 5000,
+        'epochs': 20000,
+        'policy_batch_size': 3000,
         'value_batch_size': 128,
         'display_every': 10,
         'random_seed': 42,
-        'discount_factor':  0.98, # 0.98
-        'device': torch.device('cpu')
+        'discount_factor': 0.98,
+        'device': torch.device('cpu'),
+        'display': True,
+        'print': True
     }
 }
 
@@ -161,7 +163,7 @@ class DataManager():
         self.gen_data = {
             'returns': [],
             'ep_lengths': [],
-            'policy_losses': [],
+            'losses': [],
             'value_losses': [],
         }
 
@@ -180,26 +182,21 @@ class DataManager():
 
     def set_loss(self, loss, type):
         if type == 'policy':
-            self.gen_data['policy_losses'].append(loss.item())
+            self.gen_data['losses'].append(loss.item())
             self.data['loss'] = loss
         elif type == 'value':
             self.gen_data['value_losses'].append(loss.item())
 
-    def print_epoch_stats(self, i):
+    def save_epoch_stats(self):
         mean_returns = np.mean(self.data['returns'])
         mean_ep_lens = np.mean(self.data['ep_lengths'])
         self.gen_data['returns'].append(mean_returns)
         self.gen_data['ep_lengths'].append(mean_ep_lens)
-        print('epoch: %3d \t loss: %.3f \t return: %.3f \t ep_len: %.3f'%
-            (i, self.data['loss'], mean_returns, mean_ep_lens))
 
-    # def compute_rtgs(self, rewards):
-    #     n = len(rewards)
-    #     rtgs = np.zeros_like(rewards)
-    #     for i in reversed(range(n)):
-    #         rtgs[i] = rewards[i] + (self.discount_factor * rtgs[i + 1] if i + 1 < n else 0)
-    #     return rtgs
-    
+    def print_epoch_stats(self, epoch):
+        print('epoch: %3d \t loss: %.3f \t return: %.3f \t ep_len: %.3f'%
+            (epoch, self.data['loss'], self.gen_data['returns'][-1], self.gen_data['ep_lengths'][-1]))
+
     def get_data_for_update(self):
         return [
             torch.as_tensor(np.array(self.data['observations']), dtype = torch.float32),
@@ -314,10 +311,12 @@ class VPG():
             self.run_batch() # run episodes until batch_size is exceeded
             self.policy_net.update_weights() # update policy with batch data
             self.value_net.update_weights() # update value net with batch data
-            self.mng.print_epoch_stats(self.epochs_counter) # print stats from this batch
+            self.mng.save_epoch_stats()
+            if self.params['print']: self.mng.print_epoch_stats(self.epochs_counter) # print stats from this batch
             self.mng.clear_data() # clear logs buffer
-            if self.epochs_counter % (self.params['display_every'] - 1) == 0  and self.epochs_counter != 0:
-                self.render_human_env() # occassionally display agents performance 
+            if self.params['display']:
+                if self.epochs_counter % (self.params['display_every'] - 1) == 0  and self.epochs_counter != 0:
+                    self.render_human_env() # occassionally display agents performance 
             self.epochs_counter += 1 # epoch finished
         self.env.close()
         print('Finished')
@@ -326,9 +325,3 @@ class VPG():
 if __name__ == '__main__':
     vpg = VPG()
     vpg.run()
-
-    # to do:
-    #done # - change baseline to gae
-    #done # - instead of updating value net on the same batch size as policy net, try updating with typical batch size (~128)
-    #done # - transfer update_net func from algorithm to network, make dataManager an attribute of net
-    # - add discounted reward

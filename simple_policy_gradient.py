@@ -6,9 +6,9 @@ from torch.distributions import Categorical
 import gymnasium as gym
 
 defaults = {
-    'env_name': 'LunarLander-v2',
+    'env_name': 'MountainCar-v0',
     'policy_net_params': {
-        'inner_sizes': [32],
+        'inner_sizes': [128, 128],
         'inner_activation': nn.ReLU,
         'output_activation': nn.Identity,
     },
@@ -19,10 +19,10 @@ defaults = {
     'experiment_params': {
         'epochs': 200,
         'batch_size': 5000,
-        'display': False,
-        'print': False,
-        'display_every': 200,
+        'display_every': 10,
         'random_seed': 42,
+        'display': True,
+        'print': True,
     }
 }
 
@@ -89,8 +89,6 @@ class DataManager():
         mean_ep_lens = np.mean(self.data['ep_lengths'])
         self.gen_stats['returns'].append(mean_returns)
         self.gen_stats['ep_lengths'].append(mean_ep_lens)
-        # print('epoch: %3d \t loss: %.3f \t return: %.3f \t ep_len: %.3f'%
-        #     (i, self.data['loss'], mean_returns, mean_ep_lens))
 
     def print_epoch_stats(self, i):
         print('epoch: %3d \t loss: %.3f \t return: %.3f \t ep_len: %.3f'%
@@ -199,7 +197,7 @@ class SPG():
             self.run_batch() # run episodes until batch_size is exceeded
             self.update_policy() # update policy with batch data
             self.mng.save_epoch_stats()
-            self.mng.print_epoch_stats(self.epochs_counter) # print stats from this batch
+            if self.params['print']: self.mng.print_epoch_stats(self.epochs_counter) # print stats from this batch
             self.mng.clear_data() # clear logs buffer
             if self.params['display']:
                 if self.epochs_counter % (self.params['display_every'] - 1) == 0 and self.epochs_counter != 0:

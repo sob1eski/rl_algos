@@ -32,6 +32,14 @@ class ReplayBuffer():
         self.buffer_capacity = buffer_capacity
         self.batch_size = batch_size
         self.buffer = torch.empty(buffer_capacity, dtype = ReplayBuffer.Transition)
+    
+    def get_minibatch(self):
+        if self.buffer.shape[0] > self.batch_size:
+            print('Sampling minibatch...')
+            return np.random.choice(self.buffer, size = self.batch_size)
+        else:
+            print('Buffer not big enough, returning false.')
+            return False
 
 if __name__ == '__main__':
 

@@ -4,7 +4,7 @@ import gymnasium as gym
 
 from replay_buffer import ReplayBuffer
 from policy_network import PolicyNetwork
-from value_network import ValueNetwork
+from q_value_network import QValueNetwork
 
 class SAC():
 
@@ -14,12 +14,13 @@ class SAC():
             *args,
             **kwargs):
 
-        self.seed = config['seed']
-        self.device = config['device']
+        self.general_params = config['general_params']
+        self.additional_params = config['additional_params']
+        self._set_seeds() # set seeds before initializing the networks
         self.env = config['env']
-        self.policy = config['policy_net']
-        self.value_networks = config['value_nets']
-        self.replay_buffer = config['replay_buffer']
+        self.q_value_nets = config['q_value_nets']
+        self.policy_net = PolicyNetwork(**config['policy_net'])
+        self.replay_buffer = ReplayBuffer(seed = self.additional_params['seed'], **config['replay_buffer'])
 
     ## environment ##
     @property
@@ -29,40 +30,21 @@ class SAC():
     @env.setter
     def env(self, env_params):
         self._env = gym.make(**env_params)
-        self._env.reset(seed = self.seed)
-    
-    ## policy network ##
-    @property
-    def policy_net(self):
-        return self._policy
-    
-    @policy_net.setter
-    def policy_net(self, policy_net_params):
-        pass
+        self._env.reset(seed = self.additional_params['seed'])
 
     ## value networks ##
     @property
-    def value_nets(self):
-        return self._value_nets
+    def q_value_nets(self):
+        return self._q_value_nets
     
-    @value_nets.setter
-    def value_nets(self, value_nets_params):
-        pass
-
-    ## replay buffer ##
-    @property
-    def replay_buffer(self):
-        return self._replay_buffer
-    
-    @replay_buffer.setter
-    def replay_buffer(self, replay_buffer_params):
-        self.replay_buffer = ReplayBuffer(seed = self.seed, **replay_buffer_params)
+    @q_value_nets.setter
+    def q_value_nets(self, q_value_nets_params):
         pass
 
     ## algorithm-specific ##
     def _set_seeds(self):
-        np.random.seed(self.seed)
-        torch.manual_seed(self.seed)
+        np.random.seed(self.additional_params['seed'])
+        torch.manual_seed(self.additional_params['seed'])
 
     def run(self):
         self._set_seeds()
